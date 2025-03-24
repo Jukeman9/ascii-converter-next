@@ -204,6 +204,83 @@ button:disabled {
   overflow-y: auto;
 }
 
+/* ASCII converter options styling */
+#ascii-converter-options {
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+#ascii-converter-options div {
+  margin-bottom: 15px;
+}
+
+#ascii-converter-options label {
+  display: inline-block;
+  width: 150px;
+  margin-right: 10px;
+  font-weight: 500;
+  color: #333;
+}
+
+#ascii-converter-options input[type="range"] {
+  width: 140px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+#ascii-converter-options input[type="text"] {
+  width: 100%;
+  max-width: 250px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+#ascii-converter-options select {
+  width: 100%;
+  max-width: 250px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+#ascii-converter-options span {
+  display: inline-block;
+  min-width: 30px;
+  font-size: 14px;
+  color: #333;
+}
+
+/* Range input styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #007bff;
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #007bff;
+  cursor: pointer;
+  border: none;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .button-group {
@@ -217,5 +294,15 @@ button:disabled {
   .ascii-preview,
   .ascii-settings {
     min-width: 100%;
+  }
+  
+  #ascii-converter-options label {
+    display: block;
+    width: 100%;
+    margin-bottom: 5px;
+  }
+  
+  #ascii-converter-options input[type="range"] {
+    width: 80%;
   }
 }

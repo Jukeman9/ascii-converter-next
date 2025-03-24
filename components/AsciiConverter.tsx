@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Script from 'next/script';
 
 // Define the interface for the window augmentation
@@ -38,6 +38,23 @@ declare global {
   }
 }
 
+// Utility function to debounce calls
+const createDebounce = () => {
+  let timeoutId: NodeJS.Timeout;
+  return (func: Function, wait: number) => {
+    return function (...args: any[]) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), wait);
+    };
+  };
+};
+
+// Add rate limit types
+interface RateLimitResponse {
+  allowed: boolean;
+  remaining: number;
+}
+
 type AsciiConverterProps = {
   imageUrl?: string;
 };
@@ -50,66 +67,115 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scriptLoaded, setScriptLoaded] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [rateLimitRemaining, setRateLimitRemaining] = useState<number | null>(null);
   
   const optionsContainerRef = useRef<HTMLDivElement>(null);
   const asciiOutputRef = useRef<HTMLDivElement>(null);
+  const debounce = useRef(createDebounce()).current;
+  
+  // Handle initial client-side mounting
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   
   // Initialize the ASCII converter UI once the script is loaded
   useEffect(() => {
-    if (!scriptLoaded || !optionsContainerRef.current) return;
+    if (!scriptLoaded || !optionsContainerRef.current || !isMounted) return;
     
-    // Clear previous content
-    while (optionsContainerRef.current.firstChild) {
-      optionsContainerRef.current.removeChild(optionsContainerRef.current.firstChild);
+    try {
+      const uiElement = window.asciiConverter.initAsciiConverterUI();
+      optionsContainerRef.current.appendChild(uiElement);
+    } catch (error) {
+      console.error('Error initializing ASCII converter UI:', error);
+      setError('Failed to initialize ASCII converter. Please refresh the page.');
     }
-    
-    const uiElement = window.asciiConverter.initAsciiConverterUI();
-    optionsContainerRef.current.appendChild(uiElement);
-    
-    // Set up event listeners for real-time updates
-    setupRealTimeConversion();
-  }, [scriptLoaded]);
+  }, [scriptLoaded, isMounted]);
   
   // Load image when URL changes
   useEffect(() => {
-    if (imageUrl && scriptLoaded) {
+    if (imageUrl && scriptLoaded && isMounted) {
       loadImage(imageUrl);
     }
-  }, [imageUrl, scriptLoaded]);
+  }, [imageUrl, scriptLoaded, isMounted]);
   
-  // Set up real-time conversion based on settings changes
-  const setupRealTimeConversion = () => {
-    if (!optionsContainerRef.current) return;
+  // Check rate limit
+  const checkRateLimit = async (): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/rate-limit');
+      const data: RateLimitResponse = await response.json();
+      setRateLimitRemaining(data.remaining);
+      return data.allowed;
+    } catch (error) {
+      console.error('Error checking rate limit:', error);
+      return false;
+    }
+  };
+
+  // Modify updateAsciiConversionCallback to check rate limit
+  const updateAsciiConversionCallback = useCallback(async () => {
+    if (!currentImage || !window.asciiConverter) return;
     
-    const inputFields = optionsContainerRef.current.querySelectorAll('input, select');
-    inputFields.forEach(input => {
-      input.addEventListener('input', debounce(() => {
-        if (currentImage) {
-          updateAsciiConversion();
-        }
-      }, 300));
+    // Check rate limit before proceeding
+    const isAllowed = await checkRateLimit();
+    if (!isAllowed) {
+      setError('Daily conversion limit reached. Please try again tomorrow.');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const settings = window.asciiConverter.getSettingsFromUI();
+      const result = await window.asciiConverter.convertToAscii(currentImage, settings);
       
-      // Also add change event for select elements
+      setAsciiText(result.text);
+      setAsciiImage(result.image);
+    } catch (error) {
+      console.error('Error in real-time conversion:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update ASCII conversion');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentImage]);
+
+  // Memoize the debounced handler
+  const handleInputChange = useMemo(
+    () => debounce(() => {
+      if (currentImage) {
+        updateAsciiConversionCallback();
+      }
+    }, 300),
+    [currentImage, updateAsciiConversionCallback, debounce]
+  );
+  
+  // Set up event listeners for real-time updates
+  useEffect(() => {
+    const currentContainer = optionsContainerRef.current;
+    if (!currentContainer || !currentImage) return;
+
+    const inputFields = currentContainer.querySelectorAll('input, select');
+    inputFields.forEach(input => {
+      input.addEventListener('input', handleInputChange);
       if (input instanceof HTMLSelectElement) {
-        input.addEventListener('change', debounce(() => {
-          if (currentImage) {
-            updateAsciiConversion();
-          }
-        }, 300));
+        input.addEventListener('change', handleInputChange);
       }
     });
-  };
-  
-  // Debounce function to avoid too many conversions
-  const debounce = (func: Function, wait: number) => {
-    let timeout: NodeJS.Timeout;
-    return function() {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        func();
-      }, wait);
+
+    // Cleanup function to remove event listeners
+    return () => {
+      if (currentContainer) {
+        const inputFields = currentContainer.querySelectorAll('input, select');
+        inputFields.forEach(input => {
+          input.removeEventListener('input', handleInputChange);
+          if (input instanceof HTMLSelectElement) {
+            input.removeEventListener('change', handleInputChange);
+          }
+        });
+      }
     };
-  };
+  }, [currentImage, handleInputChange]);
   
   // Load image from URL
   const loadImage = async (url: string) => {
@@ -168,27 +234,6 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
     }
   };
   
-  // Update ASCII conversion with current settings
-  const updateAsciiConversion = async () => {
-    if (!currentImage || !window.asciiConverter) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const settings = window.asciiConverter.getSettingsFromUI();
-      const result = await window.asciiConverter.convertToAscii(currentImage, settings);
-      
-      setAsciiText(result.text);
-      setAsciiImage(result.image);
-    } catch (error) {
-      console.error('Error in real-time conversion:', error);
-      setError(error instanceof Error ? error.message : 'Failed to update ASCII conversion');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
   // Reset settings to defaults
   const resetSettings = () => {
     if (!window.asciiConverter || !optionsContainerRef.current) return;
@@ -222,9 +267,14 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
     
     // Update the conversion if an image is loaded
     if (currentImage) {
-      updateAsciiConversion();
+      updateAsciiConversionCallback();
     }
   };
+  
+  // If not mounted yet (during SSR), return a simple placeholder
+  if (!isMounted) {
+    return <div className="ascii-results-container">Loading ASCII converter...</div>;
+  }
   
   return (
     <div className="ascii-results-container">
@@ -232,6 +282,7 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
         src="/conv2ascii.js" 
         onLoad={() => setScriptLoaded(true)}
         onError={() => setError('Failed to load ASCII converter script')}
+        strategy="afterInteractive"
       />
       
       <div className="ascii-preview">
@@ -279,7 +330,7 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
           </div>
         )}
       </div>
-      
+
       <div className="ascii-settings">
         <h3>ASCII Settings</h3>
         <div ref={optionsContainerRef} id="ascii-options-container"></div>

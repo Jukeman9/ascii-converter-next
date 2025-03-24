@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from 'react';
 
+// Add rate limit types
+interface RateLimitResponse {
+  allowed: boolean;
+  remaining: number;
+}
+
 type ImageGeneratorProps = {
   onImageGenerated: (imageUrl: string) => void;
 };
@@ -18,9 +24,18 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [currentGenerator, setCurrentGenerator] = useState<'gemini' | 'getimg' | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+  const [rateLimitRemaining, setRateLimitRemaining] = useState<number | null>(null);
+
+  // Handle initial client-side mounting
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Fetch available models from GetImg API
   useEffect(() => {
+    if (!isMounted) return;
+    
     async function fetchModels() {
       try {
         const response = await fetch('/api/models');
@@ -44,7 +59,20 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
     }
     
     fetchModels();
-  }, []);
+  }, [isMounted]);
+
+  // Add rate limit check
+  const checkRateLimit = async (): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/rate-limit');
+      const data: RateLimitResponse = await response.json();
+      setRateLimitRemaining(data.remaining);
+      return data.allowed;
+    } catch (error) {
+      console.error('Error checking rate limit:', error);
+      return false;
+    }
+  };
 
   // Generate image with Gemini
   const generateGeminiImage = async () => {
@@ -55,6 +83,13 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
 
     if (!geminiApiKey) {
       setError('Please enter your Gemini API key');
+      return;
+    }
+
+    // Check rate limit before proceeding
+    const isAllowed = await checkRateLimit();
+    if (!isAllowed) {
+      setError('Daily generation limit reached. Please try again tomorrow.');
       return;
     }
     
@@ -107,6 +142,13 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
       setError('Please select a model');
       return;
     }
+
+    // Check rate limit before proceeding
+    const isAllowed = await checkRateLimit();
+    if (!isAllowed) {
+      setError('Daily generation limit reached. Please try again tomorrow.');
+      return;
+    }
     
     setError(null);
     setGeneratingGetImg(true);
@@ -146,6 +188,11 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
       setGeneratingGetImg(false);
     }
   };
+
+  // If not mounted yet (during SSR), return a minimal structure to avoid hydration issues
+  if (!isMounted) {
+    return <div className="image-generator">Loading image generator...</div>;
+  }
 
   return (
     <div className="image-generator">
@@ -203,22 +250,98 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
         />
       </div>
 
-      <div className="button-group">
-        <button 
-          onClick={generateGeminiImage} 
-          disabled={generatingGemini || generatingGetImg || !geminiApiKey}
-          className={!geminiApiKey ? 'disabled' : ''}
-        >
-          {generatingGemini ? 'Generating...' : 'Generate with Gemini'}
-        </button>
-        
-        <button 
-          onClick={generateGetImgImage}
-          disabled={generatingGemini || generatingGetImg || !selectedModel}
-          className={!selectedModel ? 'disabled' : ''}
-        >
-          {generatingGetImg ? 'Generating...' : 'Generate with GetImg'}
-        </button>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '2rem'
+      }}>
+        <div className="button-group">
+          <button 
+            onClick={generateGeminiImage} 
+            disabled={generatingGemini || generatingGetImg || !geminiApiKey}
+            className={!geminiApiKey ? 'disabled' : ''}
+          >
+            {generatingGemini ? 'Generating...' : 'Generate with Gemini'}
+          </button>
+          
+          <button 
+            onClick={generateGetImgImage}
+            disabled={generatingGemini || generatingGetImg || !selectedModel}
+            className={!selectedModel ? 'disabled' : ''}
+          >
+            {generatingGetImg ? 'Generating...' : 'Generate with GetImg'}
+          </button>
+        </div>
+
+        <div className="rate-limit-container" style={{
+          backgroundColor: '#f8f9fa',
+          padding: '1rem',
+          borderRadius: '8px',
+          border: '1px solid #dee2e6',
+          minWidth: '250px'
+        }}>
+          <h4 style={{ 
+            margin: '0 0 0.5rem 0',
+            color: '#212529',
+            fontSize: '0.9rem'
+          }}>
+            Daily Generation Credits
+          </h4>
+          
+          <div style={{
+            backgroundColor: '#fff',
+            padding: '0.75rem',
+            borderRadius: '6px',
+            border: '1px solid #dee2e6'
+          }}>
+            <div style={{ fontSize: '0.875rem', color: '#6c757d', marginBottom: '0.25rem' }}>
+              Daily Limit: 10 generations
+            </div>
+            {rateLimitRemaining !== null && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <div style={{
+                  flex: 1,
+                  height: '6px',
+                  backgroundColor: '#e9ecef',
+                  borderRadius: '3px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: `${(rateLimitRemaining / 10) * 100}%`,
+                    height: '100%',
+                    backgroundColor: rateLimitRemaining > 2 ? '#28a745' : rateLimitRemaining > 0 ? '#ffc107' : '#dc3545',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+                <div style={{
+                  fontWeight: 'bold',
+                  color: rateLimitRemaining > 2 ? '#28a745' : rateLimitRemaining > 0 ? '#ffc107' : '#dc3545'
+                }}>
+                  {rateLimitRemaining} left
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div style={{
+            fontSize: '0.75rem',
+            color: '#6c757d',
+            marginTop: '0.5rem'
+          }}>
+            {rateLimitRemaining === null ? (
+              'Loading...'
+            ) : rateLimitRemaining > 0 ? (
+              'Credits reset daily at midnight UTC'
+            ) : (
+              'Limit reached. Resets at midnight UTC'
+            )}
+          </div>
+        </div>
       </div>
 
       {error && (

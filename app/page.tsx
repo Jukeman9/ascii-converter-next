@@ -1,12 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ImageGenerator from '@/components/ImageGenerator';
 import AsciiConverter from '@/components/AsciiConverter';
 import styles from './page.module.css';
 
 export default function Home() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Handle client-side mounting
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Handler for when an image is generated
   const handleImageGenerated = (imageUrl: string) => {
@@ -29,7 +35,7 @@ export default function Home() {
             <ImageGenerator onImageGenerated={handleImageGenerated} />
           </section>
           
-          {currentImageUrl && (
+          {isMounted && currentImageUrl && (
             <section className={styles.converterSection}>
               <h2>ASCII Conversion</h2>
               <AsciiConverter imageUrl={currentImageUrl} />
