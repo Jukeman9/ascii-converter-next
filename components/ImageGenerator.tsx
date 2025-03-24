@@ -1,6 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
+
+// Add model interface
+interface Model {
+  id: string;
+  name: string;
+  family: string;
+  pipelines: string[];
+}
 
 // Add rate limit types
 interface RateLimitResponse {
@@ -21,7 +30,7 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [generationTime, setGenerationTime] = useState<number | null>(null);
-  const [models, setModels] = useState<any[]>([]);
+  const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [currentGenerator, setCurrentGenerator] = useState<'gemini' | 'getimg' | null>(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -41,16 +50,17 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
         const response = await fetch('/api/models');
         
         if (!response.ok) {
-          throw new Error('Failed to fetch models');
+          const errorData = await response.json();
+          console.error('Error fetching models:', errorData);
+          return;
         }
         
-        const data = await response.json();
+        const data: Model[] = await response.json();
         setModels(data);
         
         // Set default model if available
         if (data.length > 0) {
-          const defaultModel = data.find((m: any) => m.id === 'juggernaut-xl') || data[0];
-          setSelectedModel(`${defaultModel.id}:${defaultModel.family}`);
+          setSelectedModel(`${data[0].id}:${data[0].family}`);
         }
       } catch (error) {
         console.error('Error fetching models:', error);
@@ -347,7 +357,14 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
         <div className="result-box">
           <h3>{currentGenerator === 'gemini' ? 'Gemini' : 'GetImg'} Generated Image</h3>
           <div className="image-container">
-            <img src={generatedImage} alt="Generated" className="generated-image" />
+            <Image 
+              src={generatedImage}
+              alt="Generated" 
+              className="generated-image"
+              width={1024}
+              height={1024} 
+              style={{ width: '100%', height: 'auto', maxWidth: '100%' }}
+            />
           </div>
           
           {generationTime !== null && (

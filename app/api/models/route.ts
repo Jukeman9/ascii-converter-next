@@ -1,7 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 // Read API key from environment variable
 const API_KEY = process.env.GETIMG_API_KEY;
+
+// Define interface for a model
+interface Model {
+  id: string;
+  name: string;
+  family: string;
+  pipelines: string[];
+  [key: string]: string | string[] | number | boolean | undefined;
+}
 
 export async function GET() {
   try {
@@ -27,7 +36,7 @@ export async function GET() {
     const models = await response.json();
 
     // Filter models to only include text-to-image capable ones
-    const filteredModels = models.filter((model: any) => 
+    const filteredModels = models.filter((model: Model) => 
       model.pipelines.includes('text-to-image') && 
       (model.family === 'stable-diffusion' || 
        model.family === 'stable-diffusion-xl' || 
@@ -35,10 +44,10 @@ export async function GET() {
     );
 
     return NextResponse.json(filteredModels);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching models:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch models' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch models' },
       { status: 500 }
     );
   }

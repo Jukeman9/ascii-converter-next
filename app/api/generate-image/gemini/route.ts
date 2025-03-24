@@ -41,17 +41,17 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    const imageData = data.candidates[0].content.parts.find((part: any) => part.inlineData)?.inlineData.data;
+    const imageData = data.candidates[0].content.parts.find((part: { inlineData?: { data: string } }) => part.inlineData)?.inlineData.data;
 
     if (!imageData) {
       return NextResponse.json({ error: 'No image data in response' }, { status: 500 });
     }
 
     return NextResponse.json({ imageData });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating image with Gemini:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to generate image' },
+      { error: error instanceof Error ? error.message : 'Failed to generate image' },
       { status: 500 }
     );
   }

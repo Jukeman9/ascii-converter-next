@@ -2,31 +2,16 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Script from 'next/script';
+import Image from 'next/image';
 
 // Define the interface for the window augmentation
 declare global {
   interface Window {
     asciiConverter: {
-      convertToAscii: (imgSource: HTMLImageElement | string, options?: any) => Promise<{text: string; image: string}>;
+      convertToAscii: (imgSource: HTMLImageElement | string, options?: AsciiOptions) => Promise<{text: string; image: string}>;
       initAsciiConverterUI: () => HTMLElement;
-      getSettingsFromUI: () => any;
-      defaults: {
-        width: number;
-        height: number;
-        brightness: number;
-        contrast: number;
-        saturation: number;
-        grayscale: number;
-        invert: number;
-        hue: number;
-        sepia: number;
-        colorized: boolean;
-        charSet: string;
-        customChars: string;
-        stretchWidth: number;
-        stretchHeight: number;
-        [key: string]: any;
-      };
+      getSettingsFromUI: () => AsciiOptions;
+      defaults: AsciiOptions;
       CHAR_SETS: {
         standard: string;
         extended: string;
@@ -38,13 +23,32 @@ declare global {
   }
 }
 
+// Define the options interface for ASCII conversion
+interface AsciiOptions {
+  width: number;
+  height: number;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  grayscale: number;
+  invert: number;
+  hue: number;
+  sepia: number;
+  colorized: boolean;
+  charSet: string;
+  customChars: string;
+  stretchWidth: number;
+  stretchHeight: number;
+  [key: string]: string | number | boolean;
+}
+
 // Utility function to debounce calls
 const createDebounce = () => {
   let timeoutId: NodeJS.Timeout;
-  return (func: Function, wait: number) => {
-    return function (...args: any[]) {
+  return <T extends (...args: unknown[]) => void>(func: T, wait: number) => {
+    return function (this: unknown, ...args: Parameters<T>) {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => func(...args), wait);
+      timeoutId = setTimeout(() => func.apply(this, args), wait);
     };
   };
 };
@@ -56,7 +60,7 @@ type AsciiConverterProps = {
 export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
   const [loading, setLoading] = useState(false);
   const [asciiText, setAsciiText] = useState<string>('');
-  const [asciiImage, setAsciiImage] = useState<string>('');
+  const [asciiImage, setAsciiImage] = useState<string | null>(null);
   const [conversionTime, setConversionTime] = useState<number | null>(null);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,31 +69,52 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
   
   const optionsContainerRef = useRef<HTMLDivElement>(null);
   const asciiOutputRef = useRef<HTMLDivElement>(null);
-  const debounce = useRef(createDebounce()).current;
+  const debounce = useMemo(() => createDebounce(), []);
   
-  // Handle initial client-side mounting
   useEffect(() => {
     setIsMounted(true);
   }, []);
   
-  // Initialize the ASCII converter UI once the script is loaded
+  // Load ASCII converter script
   useEffect(() => {
-    if (!scriptLoaded || !optionsContainerRef.current || !isMounted) return;
+    if (isMounted && typeof window !== 'undefined') {
+      setScriptLoaded(true);
+    }
+  }, [isMounted]);
+  
+  // Function to load an image from URL
+  const loadImage = useCallback(async (url: string) => {
+    setLoading(true);
+    setError(null);
     
     try {
-      const uiElement = window.asciiConverter.initAsciiConverterUI();
-      optionsContainerRef.current.appendChild(uiElement);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = url;
+      });
+      
+      setCurrentImage(img);
+      
+      if (window.asciiConverter) {
+        updateAsciiConversionCallback();
+      }
     } catch (error) {
-      console.error('Error initializing ASCII converter UI:', error);
-      setError('Failed to initialize ASCII converter. Please refresh the page.');
+      console.error('Error loading image:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load image');
+      setLoading(false);
     }
-  }, [scriptLoaded, isMounted]);
+  }, [updateAsciiConversionCallback]);
   
   // Load image when URL changes
   useEffect(() => {
     if (imageUrl && scriptLoaded && isMounted) {
       loadImage(imageUrl);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl, scriptLoaded, isMounted]);
   
   // Modify updateAsciiConversionCallback to remove rate limit check
@@ -150,33 +175,6 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
     };
   }, [currentImage, handleInputChange]);
   
-  // Load image from URL
-  const loadImage = async (url: string) => {
-    setError(null);
-    
-    try {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = url;
-      
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => {
-          setCurrentImage(img);
-          resolve();
-        };
-        img.onerror = () => {
-          reject(new Error('Failed to load image'));
-        };
-      });
-      
-      // Convert to ASCII automatically when image loads
-      convertToAscii(img);
-    } catch (error) {
-      console.error('Error loading image:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load image');
-    }
-  };
-  
   // Convert image to ASCII
   const convertToAscii = async (img: HTMLImageElement) => {
     if (!window.asciiConverter) return;
@@ -222,9 +220,11 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
       if (defaults.hasOwnProperty(settingName)) {
         if (input instanceof HTMLInputElement) {
           if (input.type === 'checkbox') {
-            input.checked = defaults[settingName];
+            // Type assertion for checkbox property since we know it's a boolean
+            input.checked = !!defaults[settingName];
           } else {
-            input.value = defaults[settingName];
+            // Type assertion for input value since we need to convert to string
+            input.value = String(defaults[settingName]);
             
             // Trigger change event for range inputs to update displayed value
             if (input.type === 'range') {
@@ -233,7 +233,10 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
             }
           }
         } else if (input instanceof HTMLSelectElement) {
-          input.value = defaults[settingName] || 'standard';
+          // Type assertion for select value
+          input.value = typeof defaults[settingName] === 'string' 
+            ? defaults[settingName] as string 
+            : 'standard';
         }
       }
     });
@@ -270,7 +273,15 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
         )}
         
         <div className="ascii-image-wrapper">
-          {asciiImage && <img src={asciiImage} alt="ASCII Art" />}
+          {asciiImage && (
+            <Image 
+              src={asciiImage}
+              alt="ASCII Art" 
+              width={500}
+              height={500}
+              style={{ width: '100%', height: 'auto' }}
+            />
+          )}
         </div>
         
         <div 

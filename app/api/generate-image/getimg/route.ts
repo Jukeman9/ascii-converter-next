@@ -10,7 +10,7 @@ interface RequestBody {
   width: number;
   height: number;
   response_format: string;
-  [key: string]: any; // Add index signature to allow string indexing
+  [key: string]: string | number | undefined; // More specific index signature
 }
 
 export async function POST(request: NextRequest) {
@@ -30,12 +30,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine the API endpoint based on the model family
-    let endpoint;
     const modelId = String(model).split(':')[0]; // Extract model ID if it has format "id:family"
     const modelFamily = String(model).split(':')[1] || 'stable-diffusion-xl'; // Default to SDXL if not specified
-
-    // Use the family to determine the endpoint
-    endpoint = `https://api.getimg.ai/v1/${modelFamily}/text-to-image`;
+    const endpoint = `https://api.getimg.ai/v1/${modelFamily}/text-to-image`;
 
     // Build request body
     const requestBody: RequestBody = {
@@ -72,10 +69,10 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     
     return NextResponse.json({ imageData: data.image });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating image with GetImg:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to generate image' },
+      { error: error instanceof Error ? error.message : 'Failed to generate image' },
       { status: 500 }
     );
   }
