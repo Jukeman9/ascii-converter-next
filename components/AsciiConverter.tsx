@@ -49,12 +49,6 @@ const createDebounce = () => {
   };
 };
 
-// Add rate limit types
-interface RateLimitResponse {
-  allowed: boolean;
-  remaining: number;
-}
-
 type AsciiConverterProps = {
   imageUrl?: string;
 };
@@ -68,7 +62,6 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
   const [error, setError] = useState<string | null>(null);
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [rateLimitRemaining, setRateLimitRemaining] = useState<number | null>(null);
   
   const optionsContainerRef = useRef<HTMLDivElement>(null);
   const asciiOutputRef = useRef<HTMLDivElement>(null);
@@ -99,29 +92,9 @@ export default function AsciiConverter({ imageUrl }: AsciiConverterProps) {
     }
   }, [imageUrl, scriptLoaded, isMounted]);
   
-  // Check rate limit
-  const checkRateLimit = async (): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/rate-limit');
-      const data: RateLimitResponse = await response.json();
-      setRateLimitRemaining(data.remaining);
-      return data.allowed;
-    } catch (error) {
-      console.error('Error checking rate limit:', error);
-      return false;
-    }
-  };
-
-  // Modify updateAsciiConversionCallback to check rate limit
+  // Modify updateAsciiConversionCallback to remove rate limit check
   const updateAsciiConversionCallback = useCallback(async () => {
     if (!currentImage || !window.asciiConverter) return;
-    
-    // Check rate limit before proceeding
-    const isAllowed = await checkRateLimit();
-    if (!isAllowed) {
-      setError('Daily conversion limit reached. Please try again tomorrow.');
-      return;
-    }
     
     setLoading(true);
     setError(null);

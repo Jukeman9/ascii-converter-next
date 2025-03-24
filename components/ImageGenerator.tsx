@@ -85,13 +85,6 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
       setError('Please enter your Gemini API key');
       return;
     }
-
-    // Check rate limit before proceeding
-    const isAllowed = await checkRateLimit();
-    if (!isAllowed) {
-      setError('Daily generation limit reached. Please try again tomorrow.');
-      return;
-    }
     
     setError(null);
     setGeneratingGemini(true);
@@ -143,10 +136,10 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
       return;
     }
 
-    // Check rate limit before proceeding
+    // Check rate limit before proceeding with GetImg
     const isAllowed = await checkRateLimit();
     if (!isAllowed) {
-      setError('Daily generation limit reached. Please try again tomorrow.');
+      setError('Daily GetImg generation limit reached. Please try again tomorrow or use Gemini with your API key.');
       return;
     }
     
@@ -286,7 +279,7 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
             color: '#212529',
             fontSize: '0.9rem'
           }}>
-            Daily Generation Credits
+            GetImg Daily Credits
           </h4>
           
           <div style={{
@@ -296,7 +289,7 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
             border: '1px solid #dee2e6'
           }}>
             <div style={{ fontSize: '0.875rem', color: '#6c757d', marginBottom: '0.25rem' }}>
-              Daily Limit: 10 generations
+              Daily Limit: 10 GetImg generations
             </div>
             {rateLimitRemaining !== null && (
               <div style={{
@@ -336,9 +329,9 @@ export default function ImageGenerator({ onImageGenerated }: ImageGeneratorProps
             {rateLimitRemaining === null ? (
               'Loading...'
             ) : rateLimitRemaining > 0 ? (
-              'Credits reset daily at midnight UTC'
+              'GetImg credits reset daily at midnight UTC. Use Gemini with your API key for unlimited generations.'
             ) : (
-              'Limit reached. Resets at midnight UTC'
+              'GetImg limit reached. Use Gemini with your API key or wait until midnight UTC.'
             )}
           </div>
         </div>
